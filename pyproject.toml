@@ -9,7 +9,7 @@ dependencies = [
   "playwright>=1.64.1",
   "playwright-stealth>=2.0.3",
   "pymupdf>=1.28.0",
-  "pypdf>=6.21.2",
+  "pypdf[crypto]>=6.21.2",
   "serpapi>=1.1.2",
   "topic-gen",
   "tqdm>=4.70.1",

@@ -1,8 +1,11 @@
 import email
+import functools
 import io
 import json
 import logging
 from collections import Counter
+from concurrent.futures import ProcessPoolExecutor
+from contextlib import ExitStack
 from pathlib import Path
 
 import pypdf
@@ -36,7 +39,14 @@ def html_from_mhtml(mhtml_file: Path) -> str | None:
 def _extract_pdf(pdf_file: Path) -> dict:
     try:
         reader = pypdf.PdfReader(io.BytesIO(pdf_file.read_bytes()))
-        pages = [p.extract_text() for p in reader.pages]
+        pages = []
+        for i, page in enumerate(reader.pages):
+            # One malformed or oversized page (pypdf's per-stream token limit)
+            # shouldn't throw away the text of the whole document.
+            try:
+                pages.append(page.extract_text())
+            except Exception as e:
+                tqdm.write(f"skipped page {i + 1} of {pdf_file}: {e}")
         return {"text": "\n\n".join(t for t in pages if t) or None}
     except Exception as e:
         tqdm.write(f"failed to read {pdf_file}: {e}")
@@ -115,26 +125,38 @@ def extract_text_for_doc(doc_dir: Path, dry_run: bool = False, overwrite: bool =
     return "extracted"
 
 
-def extract_text(documents: Path, dry_run: bool = False, overwrite: bool = False) -> int:
+def extract_text(
+    documents: Path, dry_run: bool = False, overwrite: bool = False, workers: int = 1
+) -> int:
     """Fill missing doc texts for every meta.json under `documents`.
 
     `documents` can be a collection root (all snapshots) or a single dated
     snapshot directory. With dry_run=True nothing is written; with
     overwrite=True docs that already have text are re-extracted too.
+    workers > 1 spreads the docs over that many processes (parsing is CPU-bound).
     Returns the number of docs extracted (or extractable, with dry_run).
     """
     if not documents.is_dir():
         raise FileNotFoundError(f"Documents directory not found: {documents}")
 
+    if workers < 1:
+        raise ValueError("workers must be at least 1")
+
     totals: Counter[str] = Counter()
     per_snapshot: dict[str, Counter] = {}
-    meta_files = sorted(documents.rglob("meta.json"))
-    for meta_file in tqdm(meta_files, desc="Extracting text", unit="doc"):
-        doc_dir = meta_file.parent
-        snapshot = str(doc_dir.parent.relative_to(documents)) or "."
-        outcome = extract_text_for_doc(doc_dir, dry_run=dry_run, overwrite=overwrite)
-        totals[outcome] += 1
-        per_snapshot.setdefault(snapshot, Counter())[outcome] += 1
+    doc_dirs = [m.parent for m in sorted(documents.rglob("meta.json"))]
+    extract = functools.partial(extract_text_for_doc, dry_run=dry_run, overwrite=overwrite)
+    with ExitStack() as stack:
+        if workers > 1:
+            pool = stack.enter_context(ProcessPoolExecutor(max_workers=workers))
+            outcomes = pool.map(extract, doc_dirs, chunksize=16)
+        else:
+            outcomes = map(extract, doc_dirs)
+        progress = tqdm(outcomes, total=len(doc_dirs), desc="Extracting text", unit="doc")
+        for doc_dir, outcome in zip(doc_dirs, progress):
+            snapshot = str(doc_dir.parent.relative_to(documents)) or "."
+            totals[outcome] += 1
+            per_snapshot.setdefault(snapshot, Counter())[outcome] += 1
 
     mode = "DRY RUN — would extract" if dry_run else "Extracted"
     print(f"{mode}: {totals['extracted']} docs")

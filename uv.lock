@@ -3383,6 +3383,11 @@ wheels = [
     { url = "https://files.pythonhosted.org/packages/1b/4d/c9d2d67f204eff463237a1a8f5e25a6923b7b1043982b91fcaf104c8ef60/pypdf-6.21.2-py3-none-any.whl", hash = "sha256:1d44d1a3a200f25062adff0085b02040e4646431ac2ccac22e42679e91466084", size = 407766, upload-time = "2026-10-21T16:44:53.626Z" },
 ]
 
+[package.optional-dependencies]
+crypto = [
+    { name = "cryptography" },
+]
+
 [[package]]
 name = "python-dateutil"
 version = "2.9.0.post0"
@@ -3966,7 +3971,7 @@ dependencies = [
     { name = "playwright" },
     { name = "playwright-stealth" },
     { name = "pymupdf" },
-    { name = "pypdf" },
+    { name = "pypdf", extra = ["crypto"] },
     { name = "serpapi" },
     { name = "topic-gen" },
     { name = "tqdm" },
@@ -4000,7 +4005,7 @@ requires-dist = [
     { name = "playwright-stealth", specifier = ">=2.0.3" },
     { name = "prefect", marker = "extra == 'prefect'", specifier = ">=3.4" },
     { name = "pymupdf", specifier = ">=1.28.0" },
-    { name = "pypdf", specifier = ">=6.21.2" },
+    { name = "pypdf", extras = ["crypto"], specifier = ">=6.21.2" },
     { name = "serpapi", specifier = ">=1.1.2" },
     { name = "topic-gen", git = "https://github.com/irgroup/topic-gen.git" },
     { name = "tqdm", specifier = ">=4.70.1" },

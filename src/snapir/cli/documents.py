@@ -98,9 +98,13 @@ def extract_text_command(
             help="Re-extract documents that already have text and replace it.",
         ),
     ] = False,
+    workers: Annotated[
+        int,
+        typer.Option("--workers", min=1, help="Number of parallel extraction processes."),
+    ] = 1,
 ):
     """Extract missing text from saved captures (PDF, MHTML, HTML)."""
-    count = extract_text(documents=documents, dry_run=dry_run, overwrite=overwrite)
+    count = extract_text(documents=documents, dry_run=dry_run, overwrite=overwrite, workers=workers)
     verb = "Would extract" if dry_run else "Extracted"
     typer.echo(f"{verb} text for {count} documents → {documents}")
 
