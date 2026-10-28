@@ -3969,6 +3969,7 @@ dependencies = [
     { name = "pypdf" },
     { name = "serpapi" },
     { name = "topic-gen" },
+    { name = "tqdm" },
     { name = "trafilatura" },
     { name = "typer" },
 ]
@@ -4002,6 +4003,7 @@ requires-dist = [
     { name = "pypdf", specifier = ">=6.21.2" },
     { name = "serpapi", specifier = ">=1.1.2" },
     { name = "topic-gen", git = "https://github.com/irgroup/topic-gen.git" },
+    { name = "tqdm", specifier = ">=4.70.1" },
     { name = "trafilatura", specifier = ">=2.3.1" },
     { name = "typer", specifier = ">=0.26.7" },
 ]

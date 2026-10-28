@@ -1,11 +1,18 @@
 import email
 import io
 import json
+import logging
 from collections import Counter
 from pathlib import Path
 
 import pypdf
 import trafilatura
+from tqdm import tqdm
+
+# pypdf logs a warning for every spec violation it repairs on the fly (e.g.
+# duplicate /Info keys) — common in scraped PDFs and not actionable here.
+# Real read failures still surface via the exception handler in _extract_pdf.
+logging.getLogger("pypdf").setLevel(logging.ERROR)
 
 # Content fields filled from the capture. "title" is also set by the scraper
 # (from the live page) and is only overwritten when extraction finds one.
@@ -22,7 +29,7 @@ def html_from_mhtml(mhtml_file: Path) -> str | None:
                 if payload:
                     return payload.decode("utf-8", errors="ignore")
     except Exception as e:
-        print(f"failed to parse {mhtml_file}: {e}")
+        tqdm.write(f"failed to parse {mhtml_file}: {e}")
     return None
 
 
@@ -32,7 +39,7 @@ def _extract_pdf(pdf_file: Path) -> dict:
         pages = [p.extract_text() for p in reader.pages]
         return {"text": "\n\n".join(t for t in pages if t) or None}
     except Exception as e:
-        print(f"failed to read {pdf_file}: {e}")
+        tqdm.write(f"failed to read {pdf_file}: {e}")
         return {}
 
 
@@ -121,7 +128,8 @@ def extract_text(documents: Path, dry_run: bool = False, overwrite: bool = False
 
     totals: Counter[str] = Counter()
     per_snapshot: dict[str, Counter] = {}
-    for meta_file in sorted(documents.rglob("meta.json")):
+    meta_files = sorted(documents.rglob("meta.json"))
+    for meta_file in tqdm(meta_files, desc="Extracting text", unit="doc"):
         doc_dir = meta_file.parent
         snapshot = str(doc_dir.parent.relative_to(documents)) or "."
         outcome = extract_text_for_doc(doc_dir, dry_run=dry_run, overwrite=overwrite)

@@ -12,6 +12,7 @@ dependencies = [
   "pypdf>=6.21.2",
   "serpapi>=1.1.2",
   "topic-gen",
+  "tqdm>=4.70.1",
   "trafilatura>=2.3.1",
   "typer>=0.26.7",
 ]
