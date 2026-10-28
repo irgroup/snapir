@@ -1,0 +1,71 @@
+# Self-hosted Prefect server + one snapir worker. From the repository root:
+#
+#   docker compose -f workflows/docker/docker-compose.yml up -d --build
+#   docker compose -f workflows/docker/docker-compose.yml exec worker prefect --no-prompt deploy --all
+#
+# Credentials go into workflows/docker/.env (SERPAPI_API_KEY, SNAPIR_LLM_MODEL,
+# SNAPIR_LLM_BASE_URL, SNAPIR_LLM_API_KEY, ...). Data lands in SNAPIR_HOST_DATA
+# (default ./data next to this file).
+
+name: snapir
+
+services:
+  postgres:
+    image: postgres:15-alpine
+    restart: always
+    environment:
+      POSTGRES_USER: prefect
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-prefect}
+      POSTGRES_DB: prefect
+    volumes:
+      - db_data:/var/lib/postgresql/data
+
+  server:
+    image: prefecthq/prefect:3-python3.11
+    restart: always
+    command: ["prefect", "server", "start", "--host", "0.0.0.0"]
+    environment:
+      # The URL your browser uses to reach the API, if not localhost.
+      PREFECT_UI_API_URL: ${PREFECT_UI_API_URL:-http://localhost:4200/api}
+      PREFECT_API_DATABASE_CONNECTION_URL: postgresql+asyncpg://prefect:${POSTGRES_PASSWORD:-prefect}@postgres:5432/prefect
+    ports:
+      - "4200:4200"
+    depends_on:
+      - postgres
+
+  # One worker serves the whole pool. For query sets that should scrape in
+  # parallel, add a worker per work queue (`--work-queue <name>`), each with
+  # its own browser profile volume and VNC port, and set work_queue_name on
+  # the matching deployments in prefect.yaml.
+  worker:
+    build:
+      context: ../..
+      dockerfile: workflows/docker/Dockerfile
+      secrets:
+        - github_token
+    restart: always
+    command: ["prefect", "worker", "start", "--pool", "snapir", "--type", "process"]
+    env_file:
+      - path: .env
+        required: false
+    environment:
+      PREFECT_API_URL: http://server:4200/api
+      DISPLAY: ":99"
+      SNAPIR_DATA_DIR: /data
+      BROWSER_PROFILE_DIR: /var/snapir/browser-profile
+      EXTENSION_DIR: /data/extensions/idcac
+    volumes:
+      - ${SNAPIR_HOST_DATA:-./data}:/data
+      - browser_profile:/var/snapir/browser-profile
+    ports:
+      - "127.0.0.1:5900:5900" # VNC to the virtual display; tunnel to reach it remotely
+    depends_on:
+      - server
+
+volumes:
+  db_data:
+  browser_profile:
+
+secrets:
+  github_token:
+    environment: GITHUB_PAT

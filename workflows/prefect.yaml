@@ -1,0 +1,57 @@
+# Example deployments for the snapir flows. Adapt the parameters (query
+# sets, prompts, schedules) to your collection, then from this directory:
+#
+#   prefect work-pool create snapir --type process   # once
+#   prefect --no-prompt deploy --all
+#
+# {{ $VAR }} is filled from the environment when you run `prefect deploy`:
+#   SNAPIR_WORKFLOWS_DIR  this directory, as seen by the worker
+#   SNAPIR_DATA_DIR       the data root, as seen by the worker
+# In the docker setup (docker/docker-compose.yml) both are set in the worker
+# container, so deploy from there: docker compose exec worker prefect --no-prompt deploy --all
+# (the docker worker creates the pool itself on start).
+#
+# Credentials (SERPAPI_API_KEY, SNAPIR_LLM_*) are read from the worker's
+# environment; they are not part of the deployments.
+
+name: snapir
+prefect-version: 3.9.0
+
+# The worker runs the flows from its own snapir install, no clone needed.
+pull:
+- prefect.deployments.steps.set_working_directory:
+    directory: "{{ $SNAPIR_WORKFLOWS_DIR }}"
+
+deployments:
+# Weekdays: grow the candidate pool from new debates. Curate topics from it
+# with `snapir topics select` into the query sets below.
+- name: topic-pool
+  entrypoint: flows/topic_pool.py:topic_pool
+  parameters:
+    topic_prompt: "{{ $SNAPIR_DATA_DIR }}/topic-emerging-v5.yaml"
+    query_prompt: "{{ $SNAPIR_DATA_DIR }}/queries-v5.yaml"
+    debates_dir: "{{ $SNAPIR_DATA_DIR }}/debates"
+    topics: "{{ $SNAPIR_DATA_DIR }}/topics.jsonl"
+    queries: "{{ $SNAPIR_DATA_DIR }}/queries.jsonl"
+  work_pool:
+    name: snapir
+  schedules:
+  - cron: 0 14 * * 1-5
+    timezone: Europe/Berlin
+
+# Daily: one deployment per query set, each with its own documents
+# directory (one collection per query set). Copy this block for another set;
+# give each set its own work queue and worker if they should run in parallel.
+- name: daily-snapshot-selected
+  entrypoint: flows/daily_snapshot.py:daily_snapshot
+  concurrency_limit: 1
+  parameters:
+    queries: "{{ $SNAPIR_DATA_DIR }}/queries-selected.jsonl"
+    serps: "{{ $SNAPIR_DATA_DIR }}/serps"
+    documents: "{{ $SNAPIR_DATA_DIR }}/docs"
+    headed: true # needs a display; the docker worker provides one via Xvfb
+  work_pool:
+    name: snapir
+  schedules:
+  - cron: 0 8 * * *
+    timezone: Europe/Berlin
