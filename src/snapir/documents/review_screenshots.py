@@ -3,16 +3,10 @@ import shutil
 import sys
 from pathlib import Path
 
-import matplotlib
-import matplotlib.pyplot as plt
 from PIL import Image
 
 from snapir.ids import doc_id_from_url
 from snapir.serps.links import iter_serp_links
-
-# macosx backend only exists on macOS; TkAgg works locally and over the
-# worker containers' Xvfb/VNC display (see prefect/Dockerfile for python3-tk).
-matplotlib.use("macosx" if sys.platform == "darwin" else "TkAgg")
 
 # Full-page screenshots can be many thousands of px tall; the figure only
 # ever shows them shrunk to fit its aspect box anyway, so downsizing before
@@ -24,6 +18,29 @@ MAX_DISPLAY_SIZE = (1600, 1600)
 # full width, so it reads clearly instead of the whole page squished thin —
 # most keep/delete calls don't need to see below the fold anyway.
 TOP_CROP_HEIGHT = 1600
+
+
+def _interactive_pyplot():
+    """Switch matplotlib to an interactive backend and return pyplot.
+
+    Done lazily (not at import) so the other `documents` commands, which share
+    this CLI module, still work on headless machines without a display.
+    """
+    import matplotlib
+
+    # macosx backend only exists on macOS; TkAgg works locally and over the
+    # worker containers' Xvfb/VNC display (see prefect/Dockerfile for python3-tk).
+    backend = "macosx" if sys.platform == "darwin" else "TkAgg"
+    try:
+        matplotlib.use(backend)
+    except ImportError as e:
+        raise ValueError(
+            f"Reviewing screenshots needs a display for the {backend} backend "
+            "(set DISPLAY, e.g. via X forwarding or Xvfb/VNC)."
+        ) from e
+    import matplotlib.pyplot as plt
+
+    return plt
 
 
 def _load_meta(doc_dir: Path) -> dict:
@@ -87,6 +104,8 @@ def review_documents(
         return 0
 
     print(f"Found {len(pairs)} screenshots — use ←/→ to navigate, d to delete, q to quit.")
+
+    plt = _interactive_pyplot()
 
     deleted: list[str] = []
     state = {"idx": 0}
