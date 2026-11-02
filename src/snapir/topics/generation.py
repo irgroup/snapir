@@ -1,12 +1,16 @@
+from __future__ import annotations
+
 from datetime import datetime, timezone
 from pathlib import Path
+from typing import TYPE_CHECKING
 
-from topic_gen.generate import Generator
-from topic_gen.models import TRECTopic
+if TYPE_CHECKING:
+    from topic_gen.generate import Generator
+    from topic_gen.models import TRECTopic
 
 from snapir.ids import record_id
 from snapir.jsonl import existing_values, write_record
-from snapir.llm import make_generator, model_name, prompt_name
+from snapir.llm import make_generator, model_name, prompt_name, require_topic_gen
 from snapir.topics.debates import format_quotes, load_debates
 
 
@@ -33,6 +37,9 @@ def generate_topics(
     Appends results incrementally. Returns the number of debates processed
     (prompts previewed with dry_run, topics written otherwise).
     """
+    require_topic_gen()
+    from topic_gen.models import TRECTopic
+
     records = load_debates(debates, debate_id)
     existing_ids = existing_values(output, "debate_id")
     to_process = [d for d in records if d["id"] not in existing_ids and d.get("quotes")]

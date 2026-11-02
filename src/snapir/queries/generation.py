@@ -1,19 +1,10 @@
 from datetime import datetime, timezone
 from pathlib import Path
 
-from pydantic import Field
-from topic_gen.models import BaseTopic
-
 from snapir.ids import record_id
 from snapir.jsonl import existing_values, read_jsonl, write_record
-from snapir.llm import make_generator, model_name, prompt_name
+from snapir.llm import make_generator, model_name, prompt_name, require_topic_gen
 from snapir.topics.debates import format_quotes, load_debates
-
-
-class QuerySet(BaseTopic):
-    """Five search queries generated from a TREC topic."""
-
-    queries: list[str] = Field(description="List of exactly 5 search queries.")
 
 
 def load_topics(topics_path: Path, topic_id: str | None = None) -> list[dict]:
@@ -56,6 +47,15 @@ def generate_queries(
     Appends results incrementally. Returns the number of topics previewed
     (dry_run) or the number of queries written.
     """
+    require_topic_gen()
+    from pydantic import Field
+    from topic_gen.models import BaseTopic
+
+    class QuerySet(BaseTopic):
+        """Five search queries generated from a TREC topic."""
+
+        queries: list[str] = Field(description="List of exactly 5 search queries.")
+
     topic_records = load_topics(topics, topic_id)
     existing_ids = existing_values(output, "topic_id")
     to_process = [t for t in topic_records if t["topic_id"] not in existing_ids]

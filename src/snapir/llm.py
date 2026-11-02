@@ -7,10 +7,27 @@ Models whose name starts with "gemini" use Google GenAI (requires
 langchain-google-genai), everything else an OpenAI-compatible endpoint.
 """
 
+from __future__ import annotations
+
 import os
 from pathlib import Path
+from typing import TYPE_CHECKING
 
-from topic_gen.generate import Generator
+if TYPE_CHECKING:
+    from topic_gen.generate import Generator
+
+
+def require_topic_gen() -> None:
+    """Explain how to install the optional generation dependency."""
+    try:
+        import topic_gen  # noqa: F401
+    except ModuleNotFoundError as exc:
+        if exc.name != "topic_gen":
+            raise
+        raise ValueError(
+            "LLM generation requires topic-gen. Install it with: "
+            'pip install "topic-gen @ git+https://github.com/irgroup/topic-gen.git"'
+        ) from None
 
 
 def model_name() -> str:
@@ -22,6 +39,9 @@ def model_name() -> str:
 
 def make_generator(prompt: Path | str, output_class: type) -> Generator:
     """Generator for `prompt` (a YAML file or a topic-gen built-in prompt name)."""
+    require_topic_gen()
+    from topic_gen.generate import Generator
+
     name = model_name()
     base_url = os.environ.get("SNAPIR_LLM_BASE_URL")
     api_key = os.environ.get("SNAPIR_LLM_API_KEY")

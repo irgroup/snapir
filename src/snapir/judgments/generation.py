@@ -5,16 +5,19 @@ and narrative; records are appended to <output>/assessments.jsonl and
 <output>/qrels.txt is rewritten from it after every run.
 """
 
+from __future__ import annotations
+
 import json
 from datetime import date, datetime, timezone
 from pathlib import Path
+from typing import TYPE_CHECKING
 
-from topic_gen.generate import Generator
-from topic_gen.models import MTO_responds
+if TYPE_CHECKING:
+    from topic_gen.generate import Generator
 
 from snapir.ids import doc_id_from_url, make_docno
 from snapir.jsonl import read_jsonl
-from snapir.llm import make_generator, model_name
+from snapir.llm import make_generator, model_name, require_topic_gen
 from snapir.serps.links import iter_serp_links
 
 DEFAULT_PROMPT = "-DNA-zero-shot"  # built-in topic-gen prompt
@@ -103,6 +106,9 @@ def assess_documents(
     if not to_assess or generator is None:
         return len(to_assess), []
 
+    require_topic_gen()
+    from topic_gen.models import MTO_responds
+
     results = generator.generate(
         query=[p["query"] for p in to_assess],
         description=[topics[p["topic_id"]].get("description", "") for p in to_assess],
@@ -167,6 +173,9 @@ def generate_judgments(
 ) -> int:
     """Judge one snapshot's SERP documents; returns the number of judgments
     written (or, with dry_run, the number of pairs that would be judged)."""
+    require_topic_gen()
+    from topic_gen.models import MTO_responds
+
     if not serps.is_dir():
         raise FileNotFoundError(f"SERP directory not found: {serps}")
     if not topics.exists():
