@@ -21,6 +21,18 @@ state is reused in subsequent headless runs — no repeated challenges.
 EXTENSION_DIR (default data/extensions/idcac) is loaded into the browser if it
 exists.
 
+robots.txt is checked before every navigation (see snapir.documents.robots):
+disallowed URLs are recorded with scrape_status "robots" and not loaded. Redirect
+targets are checked after the navigation (Playwright cannot intercept the hops);
+a disallowed one discards the capture with the same status. A
+site's Crawl-delay raises the per-domain wait when it exceeds RATE_LIMIT_DELAY.
+ignore_robots=True (--ignore-robots) skips both.
+
+stealth=True (--stealth) hides that the browser is automated: playwright-stealth
+patches plus --disable-blink-features=AutomationControlled. Off by default, so
+sites can tell the scraper is a bot; captures made with it get "stealth": true
+in meta.json.
+
 doc_id is a 16-char SHA-1 hex digest of the URL (snapir.ids.doc_id_from_url).
 
 No text is extracted here; `documents extract-text` fills meta.json text from
@@ -44,6 +56,7 @@ from playwright.async_api import Error as PlaywrightError
 from playwright.async_api import async_playwright
 from playwright_stealth import Stealth
 
+from snapir.documents.robots import RobotsCache, RobotsUnreachableError
 from snapir.serps.links import get_urls_from_serp_dir
 
 BROWSER_PROFILE_DIR = Path(os.environ.get("BROWSER_PROFILE_DIR", "data/.browser_profile"))
@@ -113,8 +126,8 @@ class PersistentProfileInUseError(RuntimeError):
 def _main_frame_login_redirect(response, page) -> str | None:
     """Return a login redirect only for the page's top-level navigation.
 
-    Facebook redirects background resources such as its PWA manifest to
-    /login. Those responses do not mean the visible post navigated away.
+    Sites may redirect background resources (e.g. a PWA manifest) to a login
+    page. Those responses do not mean the visible page navigated away.
     """
     if response.status not in (301, 302, 303, 307, 308):
         return None
@@ -130,25 +143,10 @@ def _main_frame_login_redirect(response, page) -> str | None:
     return location
 
 
-async def _preserve_facebook_post(route) -> None:
-    """Cancel a late Facebook login navigation without replacing the post."""
-    request = route.request
-    if (
-        request.resource_type == "document"
-        and "facebook.com/login" in request.url
-        and request.is_navigation_request()
-        and request.frame == request.frame.page.main_frame
-    ):
-        await route.fulfill(status=204)
-    else:
-        await route.continue_()
-
-
-def _browser_args() -> list[str]:
-    args = [
-        "--disable-blink-features=AutomationControlled",
-        "--disable-remote-fonts",  # prevents screenshot hanging on font-face resolution
-    ]
+def _browser_args(stealth: bool = False) -> list[str]:
+    args = ["--disable-remote-fonts"]  # prevents screenshot hanging on font-face resolution
+    if stealth:
+        args.append("--disable-blink-features=AutomationControlled")
     ext = EXTENSION_DIR.resolve()
     if ext.exists():
         args += [
@@ -317,231 +315,6 @@ def _save_pdf(out_dir: Path, url: str, pdf_bytes: bytes, nav_error: str | None) 
 
 
 # ---------------------------------------------------------------------------
-# Login banner dismissal
-# ---------------------------------------------------------------------------
-
-# Maps a domain substring to login-mask indicator selectors ("mask") and
-# close-button selectors ("close"). The first visible close match is clicked,
-# but only when a mask indicator is visible: some Facebook posts render
-# without any login mask, and the post dialog's own Close button matches the
-# same selectors — clicking it closes the post and lands on the timeline.
-# An absent/empty "mask" list means click unconditionally.
-_LOGIN_BANNER_SELECTORS: dict[str, dict[str, list[str]]] = {
-    "facebook.com": {
-        # Strong, locale-independent login-wall evidence. Do not use login
-        # links here: a logged-out Facebook post is itself a dialog and its
-        # header contains a login link even when no popup is present.
-        "mask": [
-            "form[action*='login']",
-            "input[name='email']",
-            "input[name='pass']",
-        ],
-        # Some popup variants contain only links. These are considered only
-        # when a second, smaller dialog is visible; a post's own header login
-        # link must never be enough on its own.
-        "weak_mask": [
-            "a[href*='facebook.com/login']",
-            "a[href*='/login']",
-            "a[href*='/recover/']",
-        ],
-        "close": [
-            "div[aria-label='Close'][role='button']",
-            "div[aria-label='Schließen'][role='button']",  # German
-            "[data-testid='close-button']",
-        ],
-    },
-    "instagram.com": {
-        "close": [
-            "div.xdg88n9 svg",  # X close button; class may change with Instagram deploys
-            "div[role='dialog'] svg",
-        ],
-    },
-}
-
-
-def _page_location(url: str) -> str:
-    """URL without fragment or trailing slash, for before/after comparison."""
-    return url.split("#", 1)[0].rstrip("/")
-
-
-async def _login_dialog(
-    page,
-    selectors: list[str],
-    weak_selectors: list[str] | None = None,
-):
-    """Return the nearest visible dialog around a strong login marker.
-
-    The nearest-dialog scoping is essential on Facebook: the post and the
-    login popup can both have role=dialog, and closing the post navigates away
-    from the content we intended to capture.
-    """
-    for selector in selectors:
-        try:
-            markers = page.locator(selector)
-            for index in range(min(await markers.count(), 10)):
-                marker = markers.nth(index)
-                if not await marker.is_visible(timeout=1_000):
-                    continue
-                dialog = marker.locator("xpath=ancestor::div[@role='dialog'][1]")
-                if await dialog.is_visible(timeout=1_000):
-                    return dialog
-        except Exception:
-            continue
-
-    # Link-only evidence is ambiguous because the post dialog itself contains
-    # a login link. Only use it when Facebook is visibly presenting more than
-    # one dialog, then choose the smallest matching dialog (the overlay).
-    if weak_selectors:
-        try:
-            dialogs = page.locator("div[role='dialog']")
-            visible_dialogs = []
-            for index in range(min(await dialogs.count(), 10)):
-                dialog = dialogs.nth(index)
-                if await dialog.is_visible(timeout=500):
-                    visible_dialogs.append(dialog)
-            if len(visible_dialogs) < 2:
-                return None
-
-            candidates = []
-            for dialog in visible_dialogs:
-                has_marker = False
-                for selector in weak_selectors:
-                    try:
-                        if await dialog.locator(selector).first.is_visible(timeout=500):
-                            has_marker = True
-                            break
-                    except Exception:
-                        continue
-                if has_marker:
-                    box = await dialog.bounding_box()
-                    area = box["width"] * box["height"] if box else float("inf")
-                    candidates.append((area, dialog))
-            if candidates:
-                return min(candidates, key=lambda candidate: candidate[0])[1]
-        except Exception:
-            pass
-    return None
-
-
-async def _hide_facebook_signup_banner(page) -> bool:
-    """Hide Facebook's fixed login/signup banner when it has no close button.
-
-    This variant is not a role=dialog. Its stable structural signature is a
-    data-nosnippet wrapper containing both a /login link and a /reg link.
-    Scoping to that wrapper avoids touching the post or the header login form.
-    """
-    try:
-        wrappers = page.locator("div[data-nosnippet]")
-        for index in range(min(await wrappers.count(), 20)):
-            wrapper = wrappers.nth(index)
-            if not await wrapper.is_visible(timeout=500):
-                continue
-            login = wrapper.locator("a[href*='facebook.com/login']").first
-            signup = wrapper.locator("a[href*='facebook.com/reg'], a[href*='/reg']").first
-            if not await login.is_visible(timeout=500):
-                continue
-            if not await signup.is_visible(timeout=500):
-                continue
-            await wrapper.evaluate(
-                "element => element.style.setProperty('display', 'none', 'important')"
-            )
-            print("hid Facebook login/signup banner")
-            return True
-    except Exception:
-        pass
-    return False
-
-
-async def _dismiss_login_banner(page, url: str) -> bool:
-    """Dismiss login overlays if present. Returns True if an action was taken.
-
-    Two guards keep this from closing the content itself: the close button is
-    only clicked when a login-mask indicator is visible on the page, and if
-    the click still causes a navigation (wrong dialog closed), we go back and
-    leave the page as-is — a capture with the login mask still beats
-    capturing the landing page.
-    """
-    domain = _domain(url)
-    action_taken = False
-    for pattern, cfg in _LOGIN_BANNER_SELECTORS.items():
-        if pattern not in domain:
-            continue
-        # Instagram's modal can take a moment to appear after domcontentloaded
-        if pattern == "instagram.com":
-            await page.wait_for_timeout(1_500)
-        if pattern == "facebook.com":
-            # Facebook can show this fixed banner and a central login dialog
-            # simultaneously. Hiding the banner must not skip dialog handling.
-            action_taken = await _hide_facebook_signup_banner(page)
-        scope = page
-        mask_selectors = cfg.get("mask", [])
-        if mask_selectors:
-            scope = None
-            # Facebook can render its overlay after domcontentloaded. A short
-            # bounded poll handles that without delaying other domains.
-            attempts = 5 if pattern == "facebook.com" else 1
-            for attempt in range(attempts):
-                scope = await _login_dialog(page, mask_selectors, cfg.get("weak_mask"))
-                if scope is not None:
-                    break
-                if attempt + 1 < attempts:
-                    await page.wait_for_timeout(300)
-            if scope is None:
-                print("no login mask detected — leaving page as-is")
-                return action_taken
-        for selector in cfg["close"]:
-            try:
-                # Close only inside the dialog proven to be the login popup.
-                # A page-global selector can match the post's own Close button.
-                el = scope.locator(selector).first
-                if await el.is_visible(timeout=2_000):
-                    url_before = page.url
-                    await el.click()
-                    await page.wait_for_timeout(500)
-                    if _page_location(page.url) == _page_location(url_before):
-                        return True
-                    print(f"dismiss click navigated to {page.url} — going back")
-                    try:
-                        await page.go_back(wait_until="domcontentloaded", timeout=15_000)
-                        await page.wait_for_timeout(1_000)
-                    except Exception as e:
-                        print(f"go_back failed: {e}")
-                    return False
-            except Exception:
-                continue
-    return action_taken
-
-
-async def _expand_youtube_description(page, url: str) -> None:
-    """Click 'Show more' on YouTube watch pages to expand the full description."""
-    if "youtube.com/watch" not in url:
-        return
-    try:
-        # Scroll down to trigger lazy rendering of the description component
-        await page.evaluate("window.scrollBy(0, 500)")
-        await page.wait_for_timeout(800)
-        for selector in [
-            "ytd-text-inline-expander #expand",
-            "#description-inline-expander #expand",
-            "tp-yt-paper-button#expand",
-        ]:
-            try:
-                el = page.locator(selector).first
-                if await el.is_visible():
-                    # A DOM click, not a mouse click: YouTube's cookie-consent
-                    # lightbox overlays the page and intercepts pointer events,
-                    # so Playwright's actionability-checked click() would retry
-                    # until its 30s default timeout for every selector.
-                    await el.evaluate("el => el.click()", timeout=2_000)
-                    await page.wait_for_timeout(500)
-                    return
-            except Exception:
-                continue
-    except Exception:
-        pass
-
-
-# ---------------------------------------------------------------------------
 # Core async scraper
 # ---------------------------------------------------------------------------
 
@@ -586,38 +359,60 @@ async def _pdf_viewer_showing(page) -> bool:
 
 
 async def _scrape_one(
-    url: str, out_dir: Path, page, interactive: bool, manual_advance: dict[str, bool]
+    url: str,
+    out_dir: Path,
+    page,
+    interactive: bool,
+    manual_advance: dict[str, bool],
+    robots: RobotsCache | None = None,
 ) -> dict:
     # Files from an earlier attempt on the same snapshot date (a retry or
     # --rescrape) must not outlive it: a failed attempt writes only meta.json,
     # and extract-text would otherwise read the stale page.mhtml beside it.
     shutil.rmtree(out_dir, ignore_errors=True)
     try:
-        return await _scrape_one_inner(url, out_dir, page, interactive, manual_advance)
+        return await _scrape_one_inner(url, out_dir, page, interactive, manual_advance, robots)
     except Exception as e:
         print(f"error: {e}")
         return _write_meta(out_dir, _meta(url, "error", error=str(e)))
-    finally:
-        # The Facebook navigation guard is installed only after the original
-        # page load. Remove it before this worker page is reused for another URL.
-        try:
-            await page.unroute("**/*", _preserve_facebook_post)
-        except Exception:
-            pass
+
+
+async def _robots_blocked_hop(robots: RobotsCache, hops: list[str]) -> str | None:
+    """First redirect hop robots.txt disallows, if any.
+
+    RobotsUnreachableError propagates, so _scrape_one records an error and
+    the URL is retried on the next run.
+    """
+    for hop in dict.fromkeys(hops):
+        if hop.startswith(("http://", "https://")) and not await robots.allowed(hop):
+            return hop
+    return None
 
 
 async def _scrape_one_inner(
-    url: str, out_dir: Path, page, interactive: bool, manual_advance: dict[str, bool]
+    url: str,
+    out_dir: Path,
+    page,
+    interactive: bool,
+    manual_advance: dict[str, bool],
+    robots: RobotsCache | None = None,
 ) -> dict:
     error = None
     response = None
     login_redirect: list[str] = []
-    loaded_url = url
-    loaded_is_facebook = False
+    # Every main-frame URL after the requested one: HTTP redirect targets and
+    # JS navigations. The worker checked only `url` against robots.txt.
+    nav_hops: list[str] = []
 
     def _on_response(resp):
         if location := _main_frame_login_redirect(resp, page):
             login_redirect.append(location)
+        try:
+            request = resp.request
+            if request.is_navigation_request() and request.frame == page.main_frame:
+                nav_hops.append(resp.url)
+        except Exception:
+            pass
 
     # Each worker reuses its page for every URL. Blank it first so a failed
     # goto() leaves an empty tab instead of the previous document, which
@@ -628,17 +423,6 @@ async def _scrape_one_inner(
     try:
         response = await page.goto(url, wait_until="domcontentloaded", timeout=30_000)
         await page.wait_for_timeout(1_500)
-        # SERP links can be Google redirect wrappers. Domain-specific handling
-        # must use the URL Chromium actually loaded, not the original wrapper.
-        loaded_url = page.url
-        loaded_is_facebook = "facebook.com" in _domain(loaded_url)
-        if loaded_is_facebook and not any(p in page.url for p in _LOGIN_REDIRECT_PATTERNS):
-            # Do not intercept during the initial load: some posts need those
-            # requests to render. Protect only the already-loaded post from a
-            # later JavaScript navigation to /login.
-            await page.route("**/*", _preserve_facebook_post)
-        await _dismiss_login_banner(page, loaded_url)
-        await _expand_youtube_description(page, loaded_url)
     except Exception as e:
         error = str(e)
     finally:
@@ -648,21 +432,17 @@ async def _scrape_one_inner(
     if not login_redirect and any(p in page.url for p in _LOGIN_REDIRECT_PATTERNS):
         login_redirect.append(page.url)
 
-    # The route handler answers Facebook's attempted /login navigation with
-    # HTTP 204, which keeps the already-rendered post in the main frame. The
-    # preceding 30x response is still observable, but it is not a failed
-    # capture when the browser ultimately remains on the requested post.
-    if (
-        login_redirect
-        and loaded_is_facebook
-        and not any(p in page.url for p in _LOGIN_REDIRECT_PATTERNS)
-    ):
-        print("prevented Facebook login navigation — capturing post")
-        login_redirect.clear()
-
     if login_redirect:
         print(f"login redirect → {login_redirect[0]}")
         return _write_meta(out_dir, _meta(url, "login"))
+
+    # Playwright cannot intercept individual redirect hops, so a disallowed
+    # target has already been requested here; it is just never stored.
+    if robots is not None:
+        hops = [hop for hop in [*nav_hops, page.url] if hop != url]
+        if blocked := await _robots_blocked_hop(robots, hops):
+            print(f"redirect target disallowed by robots.txt: {blocked}")
+            return _write_meta(out_dir, _meta(url, "robots", final_url=blocked))
 
     if interactive and manual_advance["enabled"]:
         print(
@@ -829,6 +609,8 @@ async def _scrape_all_async(
     headless: bool,
     interactive: bool,
     concurrency: int = 1,
+    ignore_robots: bool = False,
+    stealth: bool = False,
 ) -> list[dict]:
     BROWSER_PROFILE_DIR.mkdir(parents=True, exist_ok=True)
     for lock in ("SingletonLock", "SingletonSocket", "lockfile"):
@@ -839,10 +621,8 @@ async def _scrape_all_async(
         req = route.request
         if req.resource_type in ("font", "media"):
             await route.abort()
-        elif (
-            req.resource_type == "document"
-            and "facebook.com/login" not in req.url
-            and any(p in req.url for p in _LOGIN_REDIRECT_PATTERNS)
+        elif req.resource_type == "document" and any(
+            p in req.url for p in _LOGIN_REDIRECT_PATTERNS
         ):
             await route.abort()
         else:
@@ -862,7 +642,7 @@ async def _scrape_all_async(
                 context = await p.chromium.launch_persistent_context(
                     str(profile_dir),
                     headless=headless,
-                    args=_browser_args(),
+                    args=_browser_args(stealth),
                 )
                 await context.route("**/*", _handle_route)
                 return context
@@ -885,17 +665,23 @@ async def _scrape_all_async(
     # domain, not a global one — that's what makes cross-domain concurrency
     # safe: no single site is ever hit harder than the old sequential loop
     # hit it, but unrelated domains no longer wait on each other.
+    # A robots.txt Crawl-delay longer than RATE_LIMIT_DELAY replaces it for
+    # that domain.
     domain_lock = asyncio.Lock()
     domain_next_ok: dict[str, float] = {}
+    robots = None if ignore_robots else RobotsCache()
 
     async def _wait_domain_turn(url: str) -> None:
         domain = _domain(url)
+        delay = RATE_LIMIT_DELAY
+        if robots is not None:
+            delay = max(delay, await robots.crawl_delay(url) or 0)
         while True:
             async with domain_lock:
                 now = time.monotonic()
                 next_ok = domain_next_ok.get(domain, 0.0)
                 if now >= next_ok:
-                    domain_next_ok[domain] = now + RATE_LIMIT_DELAY
+                    domain_next_ok[domain] = now + delay
                     return
                 wait = next_ok - now
             await asyncio.sleep(wait)
@@ -986,6 +772,27 @@ async def _scrape_all_async(
             out_dir = documents_dir / snapshot_date / did
 
             await pause_event.wait()
+
+            if robots is not None:
+                try:
+                    allowed = await robots.allowed(url)
+                    robots_error = None
+                except RobotsUnreachableError as e:
+                    allowed, robots_error = False, str(e)
+                if not allowed:
+                    # Same reset as _scrape_one: no stale capture may survive.
+                    shutil.rmtree(out_dir, ignore_errors=True)
+                    if robots_error:
+                        print(f"{robots_error} — skipping, retried next run: {url}")
+                        meta = _meta(url, "error", error=robots_error)
+                    else:
+                        print(f"disallowed by robots.txt: {url}")
+                        meta = _meta(url, "robots")
+                    meta = _write_meta(out_dir, meta)
+                    meta["doc_id"] = did
+                    results.append(meta)
+                    continue
+
             await _wait_domain_turn(url)
 
             progress["started"] += 1
@@ -993,7 +800,7 @@ async def _scrape_all_async(
 
             try:
                 meta = await asyncio.wait_for(
-                    _scrape_one(url, out_dir, page, interactive, manual_advance),
+                    _scrape_one(url, out_dir, page, interactive, manual_advance, robots),
                     timeout=DOCUMENT_TIMEOUT,
                 )
             except asyncio.TimeoutError:
@@ -1015,6 +822,8 @@ async def _scrape_all_async(
                     context = await _recycle_context(p, context)
                     page = await context.new_page()
 
+            if stealth:
+                meta = _write_meta(out_dir, {**meta, "stealth": True})
             meta["doc_id"] = did
             results.append(meta)
 
@@ -1023,7 +832,8 @@ async def _scrape_all_async(
         except Exception:
             pass
 
-    async with Stealth().use_async(async_playwright()) as p:
+    playwright = Stealth().use_async(async_playwright()) if stealth else async_playwright()
+    async with playwright as p:
         ctx_state["context"] = await _launch_context(p)
         watcher = asyncio.create_task(_pause_watcher())
         try:
@@ -1040,6 +850,8 @@ async def _scrape_all_async(
                 print("browser context did not close cleanly")
             for recovery_profile in recovery_profiles:
                 shutil.rmtree(recovery_profile, ignore_errors=True)
+            if robots is not None:
+                await robots.aclose()
 
     return results
 
@@ -1056,6 +868,8 @@ def scrape(
     headless: bool = True,
     interactive: bool = False,
     concurrency: int = 1,
+    ignore_robots: bool = False,
+    stealth: bool = False,
 ) -> list[dict]:
     """
     Scrape documents for all url_records not already fetched for this
@@ -1073,6 +887,11 @@ def scrape(
     concurrency>1 runs multiple pages in parallel against the same shared
     browser context/profile, pacing requests per-domain rather than
     globally (see _scrape_all_async).
+
+    ignore_robots=True loads URLs that robots.txt disallows and ignores its
+    Crawl-delay.
+
+    stealth=True hides browser automation from the visited sites.
     """
     if interactive:
         headless = False
@@ -1110,7 +929,16 @@ def scrape(
 
     random.shuffle(to_scrape)
     results = asyncio.run(
-        _scrape_all_async(to_scrape, documents_dir, date_str, headless, interactive, concurrency)
+        _scrape_all_async(
+            to_scrape,
+            documents_dir,
+            date_str,
+            headless,
+            interactive,
+            concurrency,
+            ignore_robots,
+            stealth,
+        )
     )
 
     return results
@@ -1125,6 +953,8 @@ def scrape_documents(
     output: Path,
     concurrency: int,
     run_date: date | None = None,
+    ignore_robots: bool = False,
+    stealth: bool = False,
 ) -> int:
     """Capture documents from SERPs (or the index, with rescrape).
 
@@ -1169,12 +999,17 @@ def scrape_documents(
         headless=not headed,
         interactive=interactive,
         concurrency=concurrency,
+        ignore_robots=ignore_robots,
+        stealth=stealth,
     )
 
     ok = sum(1 for r in results if r["scrape_status"] == "ok")
-    flagged = [r for r in results if r["scrape_status"] not in ("ok", "error")]
+    disallowed = sum(1 for r in results if r["scrape_status"] == "robots")
+    flagged = [r for r in results if r["scrape_status"] not in ("ok", "error", "robots")]
     errors = [r for r in results if r["scrape_status"] == "error"]
     print(f"\nDone. {ok}/{len(results)} pages ok.")
+    if disallowed:
+        print(f"{disallowed} disallowed by robots.txt (not loaded).")
     if flagged:
         print(f"{len(flagged)} flagged (re-run with --interactive to handle):")
         for r in flagged:

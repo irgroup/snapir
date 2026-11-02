@@ -3262,6 +3262,15 @@ wheels = [
 ]
 
 [[package]]
+name = "protego"
+version = "0.7.0"
+source = { registry = "https://pypi.org/simple" }
+sdist = { url = "https://files.pythonhosted.org/packages/7a/d9/5026b9e75db1172f02441a84eaf42efb199b4cea14dda7651a620d1acd40/protego-0.7.0.tar.gz", hash = "sha256:2c032d9736a1f4f0c4318f3558353ae34da5cd038f1a5e064ded7548df315e5a", size = 3144321, upload-time = "2026-09-21T10:54:00.107Z" }
+wheels = [
+    { url = "https://files.pythonhosted.org/packages/c0/20/e4382a85e4cf4746d11746481f83360b990165725dd36ba73d55e029e6a9/protego-0.7.0-py3-none-any.whl", hash = "sha256:944638aaee608f6c83fcad442695f3f9381a60be8d5007248f46b00f201fa5fc", size = 13714, upload-time = "2026-09-21T10:53:58.812Z" },
+]
+
+[[package]]
 name = "protobuf"
 version = "7.36.2"
 source = { registry = "https://pypi.org/simple" }
@@ -4285,6 +4294,7 @@ dependencies = [
     { name = "pillow" },
     { name = "playwright" },
     { name = "playwright-stealth" },
+    { name = "protego" },
     { name = "pymupdf" },
     { name = "pypdf", extra = ["crypto"] },
     { name = "serpapi" },
@@ -4327,6 +4337,7 @@ requires-dist = [
     { name = "playwright", specifier = ">=1.64.1" },
     { name = "playwright-stealth", specifier = ">=2.0.3" },
     { name = "prefect", marker = "extra == 'prefect'", specifier = ">=3.4" },
+    { name = "protego", specifier = ">=0.7.0" },
     { name = "pymupdf", specifier = ">=1.28.0" },
     { name = "pypdf", extras = ["crypto"], specifier = ">=6.21.2" },
     { name = "pytest", marker = "extra == 'tests'" },

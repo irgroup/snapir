@@ -60,6 +60,20 @@ def scrape_documents_command(
             help="Number of pages to scrape in parallel (ignored with --interactive).",
         ),
     ] = 8,
+    ignore_robots: Annotated[
+        bool,
+        typer.Option(
+            "--ignore-robots",
+            help="Load URLs disallowed by robots.txt and ignore its Crawl-delay.",
+        ),
+    ] = False,
+    stealth: Annotated[
+        bool,
+        typer.Option(
+            "--stealth",
+            help="Hide browser automation from visited sites (playwright-stealth).",
+        ),
+    ] = False,
 ):
     """Capture documents referenced by SERPs."""
     count = scrape_documents(
@@ -70,6 +84,8 @@ def scrape_documents_command(
         interactive=interactive,
         output=output,
         concurrency=concurrency,
+        ignore_robots=ignore_robots,
+        stealth=stealth,
     )
     typer.echo(f"Captured {count} documents → {output}")
 

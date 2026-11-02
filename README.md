@@ -62,6 +62,7 @@ Set via environment variables:
 | `SNAPIR_LLM_TEMPERATURE` (default 1), `SNAPIR_LLM_CONCURRENCY` (default 1) | as above |
 | `SERPAPI_API_KEY` | `serps fetch` |
 | `BROWSER_PROFILE_DIR` (default `data/.browser_profile`), `EXTENSION_DIR` (default `data/extensions/idcac`) | `documents scrape` |
+| `SNAPIR_ROBOTS_USER_AGENT` (default `SnapIR`) — robots.txt group to obey; disable the check with `--ignore-robots` | `documents scrape` |
 | `SOSCI_EXPORT_URL` | default for `export answers --sosci` |
 
 ## Scheduled runs

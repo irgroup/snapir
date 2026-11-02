@@ -8,6 +8,7 @@ dependencies = [
   "pillow>=13.0.0",
   "playwright>=1.64.1",
   "playwright-stealth>=2.0.3",
+  "protego>=0.7.0",
   "pymupdf>=1.28.0",
   "pypdf[crypto]>=6.21.2",
   "serpapi>=1.1.2",
