@@ -588,6 +588,10 @@ async def _pdf_viewer_showing(page) -> bool:
 async def _scrape_one(
     url: str, out_dir: Path, page, interactive: bool, manual_advance: dict[str, bool]
 ) -> dict:
+    # Files from an earlier attempt on the same snapshot date (a retry or
+    # --rescrape) must not outlive it: a failed attempt writes only meta.json,
+    # and extract-text would otherwise read the stale page.mhtml beside it.
+    shutil.rmtree(out_dir, ignore_errors=True)
     try:
         return await _scrape_one_inner(url, out_dir, page, interactive, manual_advance)
     except Exception as e:
@@ -614,6 +618,11 @@ async def _scrape_one_inner(
     def _on_response(resp):
         if location := _main_frame_login_redirect(resp, page):
             login_redirect.append(location)
+
+    # Each worker reuses its page for every URL. Blank it first so a failed
+    # goto() leaves an empty tab instead of the previous document, which
+    # would otherwise be captured and saved under this URL.
+    await page.goto("about:blank")
 
     page.on("response", _on_response)
     try:
@@ -672,8 +681,11 @@ async def _scrape_one_inner(
     # application/pdf but serve HTML.
     content_type = response.headers.get("content-type", "") if response else ""
     is_pdf_url = url.lower().split("?")[0].endswith(".pdf")
+    # File links without a .pdf extension (/download/…, /files/…) abort the
+    # navigation with "Download is starting"; the fetch may still yield a PDF.
+    is_download = error is not None and "Download is starting" in error
     pdf_viewer = await _pdf_viewer_showing(page)
-    if "application/pdf" in content_type or is_pdf_url or pdf_viewer:
+    if "application/pdf" in content_type or is_pdf_url or is_download or pdf_viewer:
         pdf_bytes, fetch_error = await _fetch_pdf_bytes(url, page, response)
         if fetch_error:
             error = fetch_error
@@ -697,6 +709,11 @@ async def _scrape_one_inner(
             )
             raise RuntimeError(f"PDF response body unreadable: {reason}")
         # is_pdf_url but body is HTML (online viewer) — fall through to HTML flow.
+
+    # Navigation never reached the document (invalid URL, download, timeout
+    # before commit, DNS failure): there is nothing of this URL to capture.
+    if page.url == "about:blank" or page.url.startswith("chrome-error://"):
+        raise RuntimeError(error or f"navigation did not load the page ({page.url})")
 
     title, html = await _capture(page)
     issues = _detect_issues(html, title)
@@ -797,7 +814,12 @@ async def _scrape_one_inner(
     print("save done")
 
     scrape_status = "error" if error else (",".join(issues) if issues else "ok")
-    return _write_meta(out_dir, _meta(url, scrape_status, title or None, error=error))
+    # Where the captured page actually is, after redirects — lets downstream
+    # checks spot a capture of a different site than the one requested.
+    final_url = page.url if page.url != url else None
+    return _write_meta(
+        out_dir, _meta(url, scrape_status, title or None, error=error, final_url=final_url)
+    )
 
 
 async def _scrape_all_async(

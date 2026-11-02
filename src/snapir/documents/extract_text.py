@@ -101,6 +101,11 @@ def extract_text_for_doc(doc_dir: Path, dry_run: bool = False, overwrite: bool =
     except (json.JSONDecodeError, OSError):
         return "bad_meta"
 
+    # A failed scrape's capture can be of another page (older scraper versions
+    # captured the previous document left in the reused browser tab).
+    if meta.get("scrape_status") in ("error", "login"):
+        return "failed_scrape"
+
     if not overwrite and (meta.get("text") or "").strip():
         return "has_text"
 
@@ -163,6 +168,8 @@ def extract_text(
     print(f"Already had text: {totals['has_text']}")
     print(f"Empty, no capture on disk: {totals['no_capture']}")
     print(f"Empty and extraction still empty: {totals['still_empty']}")
+    if totals["failed_scrape"]:
+        print(f"Skipped, failed scrape (error/login): {totals['failed_scrape']}")
     if totals["bad_meta"]:
         print(f"Unreadable meta.json: {totals['bad_meta']}")
 

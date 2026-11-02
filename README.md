@@ -99,13 +99,3 @@ uv run snapir export verify --queries data/queries-selected.jsonl --serps data/s
 ```
 
 
-
-## Roadmap for new features:
-
-| Done | Task | Existing source | Notes |
-|---|---|---|---|
-| [ ] | Standardize configuration, paths, logging, and secrets | `src/config.py` |
-| [ ] | Unify respondent eligibility rules for judgment exports | `scripts/export_results.py`, `src/results.py` |
-| [ ] | Update tests, documentation, and container commands | `tests/`, `README.md`, `prefect/Dockerfile`, `prefect/manual-run.sh` | Container: `workflows/docker/`, `manual-run` replaced by `docker compose exec worker snapir ...`. Tests open. |
-| [ ] | `export demographics` | `analysis/summarize-demographics.py` → `src/prolific.py` | Separate demographic retrieval/export from summary analysis. |
-| [ ] | `export costs` | `analysis/summarize-spendings.py` → `src/prolific.py` | Expose project selection and actual/projected costs. |
