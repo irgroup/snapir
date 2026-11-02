@@ -3,9 +3,19 @@
 
 ## Getting Started
 ```bash
-pip install git+github.com/irgroup/snapir
+pip install git+https://github.com/irgroup/snapir.git
 ```
 
+
+### Optional LLM generation dependency
+
+`topics generate`, `queries generate`, and `judgments generate` require `topic-gen`, which is not distributed on PyPI. Install it separately in the same Python environment as SnapIR:
+
+```bash
+pip install "topic-gen @ git+https://github.com/irgroup/topic-gen.git"
+```
+
+For a uv-managed project, use `uv add "topic-gen @ git+https://github.com/irgroup/topic-gen.git"`. Other commands and CLI help work without this dependency.
 
 ## Commands
 
