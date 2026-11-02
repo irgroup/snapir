@@ -1,0 +1,17 @@
+_type: prompt
+input_variables:
+- title
+- description
+
+template: 'You are an expert in Information Retrieval specializing in query formulation. Your task is to generate highly realistic search queries based on a retrieval topic.
+
+  Context: You will be given the title and description of a retrieval. 
+
+  Task: Generate exactly 5 diverse, targeted search queries that a user would realistically type into a search engine to find documents that satisfy this specific information need. The queries must be natural and organic. 
+
+  Input Data:
+
+  Topic Title: {title}
+  
+  Topic Description: {description}
+  '

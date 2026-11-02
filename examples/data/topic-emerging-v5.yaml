@@ -1,0 +1,33 @@
+_type: prompt
+topic_type: TREC
+input_variables:
+- title
+- summary
+- quotes
+
+template: 'Objective: Generate a high-quality, temporally dynamic and specific retrieval topic that simulates a user`s evolving information need during an ongoing European news event.
+
+Context: You will be provided with a debate summary from eurotopics.net. This data aggregates how different European newspapers are covering a breaking news event, including a title, editorial summary, and press quotes (with outlet and country attribution).
+
+Task: The simulated user read the debate and is interested in the situation and how it unfolds. Synthesize a specific and dynamic information retrieval topic.
+
+The topic must include the following fields: title, description, and narrative. The title should be a brief, 2-4 word label for the topic that can also be used as a search query. The description should be a single, focused sentence or direct question that clarifies the exact goal behind the title. The narrative should be a short statement written for a relevance assessor. It must establish unambiguous boundary lines for what constitutes a "relevant" vs. "non-relevant". It can contain explicit inclusion constraints that define what a document must contain to be relevant, negative constraints to define what is topically similar but not relevant, or temporal novelty rules.
+
+Debate:
+
+
+[Title]:
+
+{title}
+
+
+[Summary]:
+
+{summary}
+
+
+[Press Quotes]:
+
+{quotes}
+
+'
