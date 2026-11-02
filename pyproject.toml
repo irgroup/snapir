@@ -11,7 +11,6 @@ dependencies = [
   "pymupdf>=1.28.0",
   "pypdf[crypto]>=6.21.2",
   "serpapi>=1.1.2",
-  "topic-gen",
   "tqdm>=4.70.1",
   "trafilatura>=2.3.1",
   "typer>=0.26.7",
@@ -23,9 +22,16 @@ requires-python = ">=3.11"
 version = "0.1.0"
 
 [project.optional-dependencies]
+tests = [
+  "pytest",
+  "pytest-cov",
+  "ruff>=0.17.3",
+  "mypy",
+  "bandit[toml]",
+]
 gemini = ["langchain-google-genai"]
 prefect = [
-    "prefect>=3.4",
+  "prefect>=3.4",
 ]
 
 [project.scripts]
@@ -38,18 +44,22 @@ requires = ["hatchling"]
 [tool.hatch.build.targets.wheel]
 packages = ["src/snapir"]
 
-[tool.uv.sources]
-topic-gen = { git = "https://github.com/irgroup/topic-gen.git" }
+[tool.hatch.build]
+exclude = [
+  "/examples",
+  "/data",
+  "/workflows",
+]
 
 [tool.ruff]
 line-length = 100
 src = ["src"]
 
 [tool.ruff.lint]
-select = ["E", "F", "W", "I", "B"]
 ignore = ["E501", "B905"]
+select = ["E", "F", "W", "I", "B"]
 
 [dependency-groups]
 dev = [
-    "ruff>=0.17.3",
+  "ruff>=0.17.3",
 ]
