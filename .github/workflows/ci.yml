@@ -43,6 +43,7 @@ jobs:
     - python-build
     runs-on: ubuntu-latest
     permissions:
+      contents: read
       id-token: write
     steps:
     - name: "📥 Check-out"
