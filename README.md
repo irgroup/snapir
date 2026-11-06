@@ -20,8 +20,7 @@ pip install snapir
 playwright install chromium          # browser for capturing pages
 ```
 
-Optional extras: `snapir[gemini]` for Gemini models, `snapir[prefect]` for the
-[scheduled workflows](workflows/README.md).
+Optional extras: `snapir[prefect]` for the [scheduled workflows](workflows/README.md).
 
 The LLM steps (`topics generate`, `queries generate`, `judgments generate`)
 also need [`topic-gen`](https://github.com/irgroup/topic-gen):
@@ -33,8 +32,7 @@ pip install "topic-gen @ git+https://github.com/irgroup/topic-gen.git"
 
 ## Quickstart: two snapshots of one query
 
-This needs only a [SerpApi](https://serpapi.com) key, no LLM. Use your own topic
-and query. IDs can be any unique strings.
+This needs only a [SerpApi](https://serpapi.com) key, no LLM.
 
 ```bash
 export SERPAPI_API_KEY=...
@@ -60,7 +58,7 @@ raw SERPs, the organic ranking as a TREC run, and the extracted page text.
 
 
 To generate topics and queries from news debates, judge relevance and export
-qrels, follow the **[tutorial](docs/tutorial.md)**. <!-- TODO: write docs/tutorial.md -->
+qrels, follow the **[tutorial](examples/minimal-example/README.md)**.
 
 ## Commands
 
@@ -109,25 +107,22 @@ All settings are environment variables:
 
 ## Documentation
 
-- [Tutorial](docs/tutorial.md): build a dynamic collection for one news topic across two days
+- [Tutorial](examples/minimal-example/README.md): run the whole pipeline for one news topic, step by step
 - [Concepts](docs/concepts.md): snapshots, IDs, on-disk layout, resuming
-- Guides: [your own topics](docs/guides/own-topics.md) ·
-  [capture quality](docs/guides/capture-quality.md) ·
-  [human assessments](docs/guides/human-assessments.md) ·
-  [LLM assessments](docs/guides/llm-assessments.md) ·
-  [responsible use](docs/guides/responsible-use.md)
+- Guides: 
+  - [your own topics](docs/guides/own-topics.md)
+  - [capture quality](docs/guides/capture-quality.md)
+  - [human assessments](docs/guides/human-assessments.md)
+  - [LLM assessments](docs/guides/llm-assessments.md)
+  - [responsible use](docs/guides/responsible-use.md)
 - [Scheduled collection](docs/guides/scheduled-collection.md) with Prefect and Docker ([setup](workflows/README.md))
 - [Agent skill](skills/snapir/SKILL.md): lets a coding agent run, resume and diagnose collection builds
-- [Example data](examples/data) (prompts, topics, queries) and [analyses](examples/analyses) behind the paper's figures
+- [Dynamic dataset](examples/dynamic-dataset): prompts, topics and queries of the paper's collection and the [analyses](examples/dynamic-dataset/analyses) behind its figures
 
 
 ## Responsible use
 
-SnapIR obeys `robots.txt` by default and does not hide its automation unless
-you pass `--stealth`. You are responsible for following the terms of service
-of the search and scraping providers and for any copyright and data-protection
-law that applies to the pages you capture. Laws on redistributing captured
-pages differ by country. 
+SnapIR obeys `robots.txt` by default and does not hide its automation. You are responsible for following the terms of service of the search and scraping providers and for any copyright and data-protection law that applies to the pages you capture. Laws on redistributing captured pages differ by country. 
 
 
 ## License

@@ -221,3 +221,5 @@ __marimo__/
 
 # data
 data/
+# generated analysis results (large, reproducible with the analysis scripts)
+examples/dynamic-dataset/analyses/results/
