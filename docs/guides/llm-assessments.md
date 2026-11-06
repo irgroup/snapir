@@ -25,14 +25,15 @@ Every document linked from the SERP is judged, not only the organic results. Pai
 
 ## Output
 
-- `assessments.jsonl`: one record per pair with `topic_id`, `query_id`,
-  `docno`, `snapshot_date`, the scores `M`, `T` and `O`, `llm_model` and
-  `assessed_at`.
+- `assessments.jsonl`: one record per topic and document with `topic_id`,
+  `query_ids` (the queries whose SERP links the document), `docno`,
+  `snapshot_date`, the scores `M`, `T` and `O`, `llm_model` and `assessed_at`.
 - `qrels.txt`: TREC qrels using the overall score `O`, rewritten after every
-  run.
+  run. Each judgment appears once for every query whose SERP links the document
+  (`query_id 0 docno O`), matching the per-query runs of `export snapshot`.
 
 
 
 ## Prompt
 
-The default is the built-in `-DNA-zero-shot` prompt (Thomas et al.), which asks for intent match (`M`), trustworthiness (`T`) and an overall score (`O`), using the topic's description and narrative. Pass `--prompt` with another built-in `topic-gen` prompt name, or with your own prompt YAML that uses the input variables `query`, `description`, `narrative` and `document` and returns the same M/T/O structure.
+The default is the built-in `-DNA-zero-shot` prompt (Thomas et al.), which asks for intent match (`M`), trustworthiness (`T`) and an overall score (`O`), with the topic's title as the query and its description and narrative as the information need. A topic's queries are treated as variants of the same need, so each document is judged once per topic. Pass `--prompt` with another built-in `topic-gen` prompt name, or with your own prompt YAML that uses the input variables `query`, `description`, `narrative` and `document` and returns the same M/T/O structure.
