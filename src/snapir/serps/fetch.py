@@ -8,6 +8,7 @@ import serpapi
 
 from snapir.jsonl import read_jsonl
 from snapir.serps.links import decode_serp_url_fields
+from snapir.serps.redirects import resolve_serp_redirects
 
 RATE_LIMIT_DELAY = 2  # seconds between successful requests
 MAX_RETRIES = 3  # retries on 429 before giving up
@@ -35,7 +36,12 @@ class Searcher:
         api_key = os.environ.get("SERPAPI_API_KEY")
         if not api_key:
             raise ValueError("SERPAPI_API_KEY must be set in environment variables.")
+        self._api_key = api_key
         self.client = serpapi.Client(api_key=api_key, timeout=10)
+
+    def _redact(self, error: Exception) -> str:
+        """Error text with the API key removed (SerpAPI errors include the request URL)."""
+        return str(error).replace(self._api_key, "<SERPAPI_API_KEY>")
 
     def search(self, query: str, num: int = 10) -> dict | None:
         """
@@ -61,13 +67,15 @@ class Searcher:
                     time.sleep(delay)
                     delay *= 2
                 elif e.status_code == 401:
-                    print(f"401 invalid API key: {e}")
+                    print("401: SerpAPI rejected the API key (SERPAPI_API_KEY).")
                     return None
                 else:
-                    print(f"HTTP {e.status_code} for query '{query}': {e}")
+                    print(f"HTTP {e.status_code} for query '{query}': {self._redact(e)}")
                     return None
             except serpapi.TimeoutError as e:
-                print(f"Timeout for query '{query}' (attempt {attempt}/{MAX_RETRIES}): {e}")
+                print(
+                    f"Timeout for query '{query}' (attempt {attempt}/{MAX_RETRIES}): {self._redact(e)}"
+                )
                 if attempt == MAX_RETRIES:
                     return None
                 time.sleep(delay)
@@ -92,14 +100,14 @@ class Searcher:
                 return result.get("ai_overview")
             except serpapi.HTTPError as e:
                 print(
-                    f"HTTP {e.status_code} resolving ai_overview (attempt {attempt}/{AI_OVERVIEW_MAX_RETRIES}): {e}"
+                    f"HTTP {e.status_code} resolving ai_overview (attempt {attempt}/{AI_OVERVIEW_MAX_RETRIES}): {self._redact(e)}"
                 )
                 if e.status_code != 429 or attempt == AI_OVERVIEW_MAX_RETRIES:
                     return None
                 time.sleep(AI_OVERVIEW_RETRY_DELAY)
             except serpapi.TimeoutError as e:
                 print(
-                    f"Timeout resolving ai_overview (attempt {attempt}/{AI_OVERVIEW_MAX_RETRIES}): {e}"
+                    f"Timeout resolving ai_overview (attempt {attempt}/{AI_OVERVIEW_MAX_RETRIES}): {self._redact(e)}"
                 )
                 if attempt == AI_OVERVIEW_MAX_RETRIES:
                     return None
@@ -151,6 +159,13 @@ def fetch_results(
         # therefore still contains literal escape text; clean URL fields
         # before persisting so downstream browsers receive navigable URLs.
         raw = decode_serp_url_fields(raw)
+
+        # Many links arrive as opaque Google redirects (/goto?url=...). Store
+        # the publisher URL instead so doc_ids are stable and robots.txt is
+        # checked against the publisher (see snapir.serps.redirects).
+        resolved, unresolved = resolve_serp_redirects(raw)
+        if resolved or unresolved:
+            print(f"resolved {resolved} redirect link(s), {unresolved} unresolved")
 
         payload = {
             "topic_id": topic_id,
