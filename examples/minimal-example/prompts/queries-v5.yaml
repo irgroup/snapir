@@ -1,0 +1,23 @@
+_type: prompt
+input_variables:
+- title
+- description
+- debate
+
+template: 'You are an expert in Information Retrieval specializing in time-sensitive, dynamic search behavior and query formulation. Your task is to generate highly realistic search queries based on an emerging retrieval topic and a recent news debate.
+
+Context: You will be given the title and description of an emerging retrieval topic together with the EuroTopics debate that the user just read. 
+
+Task: Generate exactly 5 diverse, targeted search queries that a user would realistically type into a search engine to find documents that satisfy this specific temporal information need. The queries must be natural, timely and organic. 
+
+
+Input Data:
+
+Topic Title: {title}
+  
+Topic Description: {description}
+  
+
+Debate Text:
+  {debate}
+'
