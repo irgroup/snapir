@@ -1,8 +1,11 @@
 """LLM relevance judgments (M/T/O scores) for SERP documents of one snapshot.
 
-Each (topic, document) pair is judged once against the topic's description
-and narrative; records are appended to <output>/assessments.jsonl and
-<output>/qrels.txt is rewritten from it after every run.
+Each (topic, document) pair is judged once, with the topic title as the
+query plus its description and narrative: a topic's queries are treated as
+variants of one information need. Records are appended to
+<output>/assessments.jsonl and <output>/qrels.txt is rewritten from it after
+every run, with one line per query whose SERP links the document, so the
+qrels match the per-query runs of `export snapshot`.
 """
 
 from __future__ import annotations
@@ -36,30 +39,28 @@ def _load_doc_text(documents_dir: Path, doc_id: str) -> str | None:
 
 
 def _collect_pairs(serp_date_dir: Path, query_id: str | None = None) -> list[dict]:
-    """Unique (topic_id, doc_id) pairs, with the first query linking them."""
-    seen: set[tuple[str, str]] = set()
-    records = []
-    pattern = f"*/{query_id}.json" if query_id else "*/*.json"
-    for serp_file in sorted(serp_date_dir.glob(pattern)):
+    """Unique (topic_id, doc_id) pairs, each with the query_ids whose SERP links it.
+
+    With query_id, only pairs linked from that query's SERP are returned, but
+    query_ids still lists every query of the snapshot that links the document.
+    """
+    query_ids: dict[tuple[str, str], list[str]] = {}
+    for serp_file in sorted(serp_date_dir.glob("*/*.json")):
         try:
             serp = json.loads(serp_file.read_text())
         except json.JSONDecodeError:
             continue
         tid = serp.get("topic_id", serp_file.parent.name)
+        qid = serp.get("query_id", serp_file.stem)
         for url, _result_type, _position in iter_serp_links(serp):
-            did = doc_id_from_url(url)
-            if (tid, did) in seen:
-                continue
-            seen.add((tid, did))
-            records.append(
-                {
-                    "topic_id": tid,
-                    "doc_id": did,
-                    "query": serp.get("query", ""),
-                    "query_id": serp.get("query_id", serp_file.stem),
-                }
-            )
-    return records
+            qids = query_ids.setdefault((tid, doc_id_from_url(url)), [])
+            if qid not in qids:
+                qids.append(qid)
+    return [
+        {"topic_id": tid, "doc_id": did, "query_ids": qids}
+        for (tid, did), qids in query_ids.items()
+        if query_id is None or query_id in qids
+    ]
 
 
 def assess_documents(
@@ -110,7 +111,7 @@ def assess_documents(
     from topic_gen.models import MTO_responds
 
     results = generator.generate(
-        query=[p["query"] for p in to_assess],
+        query=[topics[p["topic_id"]].get("title", "") for p in to_assess],
         description=[topics[p["topic_id"]].get("description", "") for p in to_assess],
         narrative=[topics[p["topic_id"]].get("narrative", "") for p in to_assess],
         document=documents,
@@ -130,8 +131,7 @@ def assess_documents(
                 "doc_id": pair["doc_id"],
                 "snapshot_date": snapshot_date,
                 "docno": make_docno(pair["doc_id"], snapshot_date),
-                "query": pair["query"],
-                "query_id": pair["query_id"],
+                "query_ids": pair["query_ids"],
                 "M": result.M,
                 "T": result.T,
                 "O": result.O,
@@ -145,9 +145,11 @@ def assess_documents(
 
 
 def _write_qrels(assessments_file: Path, qrels_file: Path) -> None:
-    """Rewrite qrels.txt (topic_id 0 docno O) from the full assessments file.
+    """Rewrite qrels.txt (query_id 0 docno O) from the full assessments file.
 
-    Records from before the date-embedded docno scheme fall back to doc_id.
+    A judgment is made per topic and written once for each of the topic's
+    queries. Records from before the date-embedded docno scheme fall back to
+    doc_id, and records from before per-query qrels to their single query_id.
     """
     seen: set[tuple[str, str]] = set()
     with open(qrels_file, "w") as fout:
@@ -158,7 +160,11 @@ def _write_qrels(assessments_file: Path, qrels_file: Path) -> None:
             if (rec["topic_id"], docno) in seen:
                 continue
             seen.add((rec["topic_id"], docno))
-            fout.write(f"{rec['topic_id']} 0 {docno} {rec['O']}\n")
+            query_ids = rec.get("query_ids")
+            if query_ids is None:
+                query_ids = [rec["query_id"]] if "query_id" in rec else []
+            for qid in query_ids:
+                fout.write(f"{qid} 0 {docno} {rec['O']}\n")
 
 
 def generate_judgments(
