@@ -22,4 +22,4 @@ One query per line, linked to its topic:
 
 IDs can be any strings that are unique and stay stable: they become directory and file names and appear in runs and qrels. Choose them once and never change them.
 
-You can use the topic title as the only query, write queries by hand, or generate several per topic. [`examples/data/queries-static.yaml`](../../examples/data/queries-static.yaml) is the prompt the paper used to generate five queries from title and description alone.
+You can use the topic title as the only query, write queries by hand, or generate several per topic. 
