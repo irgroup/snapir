@@ -15,15 +15,16 @@ RUN pip install --no-cache-dir uv
 WORKDIR /opt/snapir
 COPY . .
 
-# Install snapir with the prefect extra. Git dependencies (topic-gen) are
-# fetched at build time; if one is private, pass a GitHub token as a BuildKit
-# secret so it never ends up in an image layer:
+# Install snapir with the prefect extra, plus topic-gen (a git dependency,
+# needed by the topic-pool flow). If a git dependency is private, pass a GitHub
+# token as a BuildKit secret so it never ends up in an image layer:
 #   GITHUB_PAT=<token> docker compose -f workflows/docker/docker-compose.yml build
 RUN --mount=type=secret,id=github_token,required=false \
     if [ -s /run/secrets/github_token ]; then \
         git config --global url."https://$(cat /run/secrets/github_token)@github.com/".insteadOf "https://github.com/"; \
     fi; \
-    uv pip install --system ".[prefect]"; \
+    uv pip install --system ".[prefect]" \
+        "topic-gen @ git+https://github.com/irgroup/topic-gen.git"; \
     status=$?; \
     rm -f /root/.gitconfig; \
     exit $status

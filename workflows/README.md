@@ -16,17 +16,22 @@ The daily snapshot fails if verification finds gaps (queries without SERPs,
 URLs never attempted, `ok` documents without text). A missed day cannot be
 refetched, so check failed runs on the same day.
 
+The flow files are not part of the `snapir` package, so run them from a clone
+of this repository. `topic-gen` is needed for the `topic-pool` flow:
+
 ```bash
-uv sync --extra prefect
+git clone https://github.com/irgroup/snapir.git && cd snapir
+pip install "snapir[prefect]" "topic-gen @ git+https://github.com/irgroup/topic-gen.git"
+playwright install chromium
 ```
 
-## Run once locally
+## Test locally
 
 ```bash
-uv run python workflows/flows/topic_pool.py \
+python workflows/flows/topic_pool.py \
     --topic-prompt data/topic-emerging-v5.yaml --query-prompt data/queries-v5.yaml
 
-uv run python workflows/flows/daily_snapshot.py --queries data/queries-selected.jsonl --headed
+python workflows/flows/daily_snapshot.py --queries data/queries-selected.jsonl --headed
 ```
 
 Without `PREFECT_API_URL`, Prefect starts a temporary local server for the run.
@@ -45,9 +50,9 @@ To deploy against any Prefect server, using a worker on this machine:
 ```bash
 cd workflows
 export SNAPIR_WORKFLOWS_DIR=$PWD SNAPIR_DATA_DIR=$PWD/../data
-uv run prefect work-pool create snapir --type process
-uv run prefect --no-prompt deploy --all
-uv run prefect worker start --pool snapir   # in the environment with the credentials
+prefect work-pool create snapir --type process
+prefect --no-prompt deploy --all
+prefect worker start --pool snapir   # in the environment with the credentials
 ```
 
 ## Docker
@@ -71,7 +76,7 @@ docker compose -f workflows/docker/docker-compose.yml exec worker prefect --no-p
 ```
 
 - **Data:** goes to `SNAPIR_HOST_DATA`, by default `workflows/docker/data`. Put the prompt files and curated query sets there.
-- **Cookie extension:** the scraper loads it from `$EXTENSION_DIR` (`/data/extensions/idcac`) if it exists.
+- **Extensions:** the scraper loads them from `$EXTENSION_DIR` (`/data/extensions`) if they exists.
 - **Other commands:** the CLI is installed in the worker, e.g. for an interactive scrape over VNC:
 
   ```bash
