@@ -1,4 +1,4 @@
-# Moved
+# Data
 
 The prompts, topics and queries of the dynamic dataset can be found in
 [`examples/dynamic-dataset/data`](../dynamic-dataset/data):
