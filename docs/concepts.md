@@ -23,7 +23,7 @@ A topic or query belongs to a snapshot exactly when it has a SERP on that day. T
 
 IDs are deterministic. The same model and prompt applied to the same debate produce the same ID. To get new generations, change the model or the prompt, or delete the generated topic/query. Running again does not produce new ones. IDs you write yourself can be any unique strings (see [your own topics](guides/own-topics.md)).
 
-A `docno` identifies **a URL as captured on one day**. Runs and qrels use it, so a relevance judgment always refers to the version of the page that the assessor saw.
+A `docno` identifies **a URL as captured on one day**. Judgments use it inside SnapIR, so a relevance judgment always refers to the version of the page that the assessor saw. The exported collection replaces it with the `doc_id` plus the day directory (see [below](#the-exported-collection)).
 
 
 ## On-disk layout
@@ -89,19 +89,25 @@ To recover from an interrupted run, run the same command again. Nothing is overw
 
 ## The exported collection
 
-`export snapshot` writes one self-contained directory per day:
+`export snapshot` writes a collection in the **LongEval Snapshot Format v2**: one self-contained directory per day. The output directory is the collection. Its name is the dataset name in every manifest, so choose a meaningful one.
 
 ```
 collection/2026-10-26/
-├── topics.jsonl.gz       topics with a SERP that day (+ valid_from, valid_to)
+├── manifest.json         format, collection, snapshot, from/to (to exclusive), period P1D, field types
+├── documents/documents_000000.jsonl.gz
+│                         meta.json incl. text, keyed by doc_id (more numbered files for large days)
 ├── queries.jsonl.gz
+├── topics.jsonl.gz       topics with a SERP that day (+ valid_from, valid_to)
+├── run.trec.gz           organic ranking as a TREC run
+├── qrels-<set>.trec.gz   with --qrels <set>=PATH: the judgments for that day (qrels.trec.gz without a set name)
 ├── serps/<topic_id>/<query_id>.json.gz
-├── documents.jsonl.gz    meta.json incl. text, with doc_id and docno
-├── run.tsv.gz            organic ranking as a TREC run
-├── qrels.txt             with --qrels: the judgments for that day's docnos
 ├── screenshots.tar.gz    with --captures
 └── pages.tar.gz          with --captures (mHTML)
 ```
+
+Inside SnapIR, judgments are keyed by `docno` (`judgments generate`, questionnaires, `export answers`, `export qrels`). The exported run and qrels use the base `doc_id`: the day directory already says which version of the page they refer to. `export snapshot` uses the date in each input docno to put the judgment into the right day. Judgments of queries without a SERP that day are dropped, and the export fails if a query's topic is missing from `--topics`.
+
+Days without SERPs get no directory, and a day that is exported again is replaced as a whole. The export finishes by checking the rules the snapshot loader enforces (manifests, unique IDs, stable query text, topic and query references) and fails if one is broken.
 
 
 ## Using SnapIR from Python

@@ -32,7 +32,7 @@ cp .env.example .env      # then fill in the keys
 1 query batch, plus one judgment per captured page with text (51 in our run).
 
 `run.sh` loads `.env` and runs every step. All output goes to `data/` and
-`collection/` in this directory:
+`minimal-example/` in this directory:
 
 ```bash
 ./run.sh                 # all steps
@@ -254,22 +254,25 @@ snapir export rankings --serps data/serps --output data/rankings.csv
 
 snapir export snapshot --serps data/serps --documents data/docs \
   --topics data/topics-selected.jsonl --queries data/queries-selected.jsonl \
-  --qrels data/judgments/2026-11-06/qrels.txt --output collection
+  --qrels llm=data/judgments/2026-11-06/qrels.txt \
+  --output minimal-example
 ```
 
-`export rankings` flattens the organic results of all SERPs into one CSV (topic, query, rank, url, timestamp) for analysis. `export snapshot` packages the collection with one directory per day:
+`export rankings` flattens the organic results of all SERPs into one CSV (topic, query, rank, url, timestamp) for analysis. `export snapshot` packages the collection in the [LongEval snapshot format](../../docs/concepts.md#the-exported-collection), with one directory per day:
 
 ```
-collection/2026-11-06/
-├── topics.jsonl.gz       topics with a SERP on that day (+ valid_from/valid_to)
+minimal-example/2026-11-06/
+├── manifest.json         format, snapshot period and field types
+├── documents/documents_000000.jsonl.gz
+│                         meta.json and text of every captured page
 ├── queries.jsonl.gz
-├── serps/                raw SERPs (<topic_id>/<query_id>.json.gz)
-├── documents.jsonl.gz    meta.json and text of every captured page
-├── run.tsv.gz            Google's organic ranking as a TREC run
-└── qrels.txt             the judgments for that day
+├── topics.jsonl.gz       topics with a SERP on that day (+ valid_from/valid_to)
+├── run.trec.gz           Google's organic ranking as a TREC run
+├── qrels-llm.trec.gz     the LLM judgments for that day (set name from --qrels llm=…)
+└── serps/                raw SERPs (<topic_id>/<query_id>.json.gz)
 ```
 
-`run.tsv.gz` and `qrels.txt` are both keyed by `query_id` and use the same docnos. Add `--captures` to include the screenshots and MHTML files.
+`run.trec.gz` and `qrels-llm.trec.gz` are both keyed by `query_id` and the base `doc_id`; the day directory identifies the version of the page. The export is checked against the format at the end. Add `--captures` to include the screenshots and MHTML files.
 
 Our run exported 1 topic, 5 queries, 5 SERPs, 60 documents, 40 run lines and 53 qrels:
 

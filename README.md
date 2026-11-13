@@ -53,8 +53,10 @@ snapir export snapshot --serps data/serps --documents data/docs \
   --topics topics.jsonl --queries queries.jsonl --output collection
 ```
 
-`collection/<YYYY-MM-DD>/` now contains, for each day, the topics, queries,
-raw SERPs, the organic ranking as a TREC run, and the extracted page text.
+`collection/<YYYY-MM-DD>/` contains, for each day, a `manifest.json`, the
+topics, queries, raw SERPs, the organic ranking as a TREC run, and the
+extracted page text, in the LongEval snapshot format.
+The output directory's name is the dataset name in every manifest, so give it a meaningful one.
 
 
 To generate topics and queries from news debates, judge relevance and export

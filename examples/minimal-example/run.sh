@@ -95,5 +95,6 @@ if step 10 "Export rankings and the collection"; then
   snapir export rankings --serps "$DATA/serps" --output "$DATA/rankings.csv"
   snapir export snapshot --serps "$DATA/serps" --documents "$DATA/docs" \
     --topics "$DATA/topics-selected.jsonl" --queries "$DATA/queries-selected.jsonl" \
-    --qrels "$DATA/judgments/$TODAY/qrels.txt" --output collection
+    --qrels "llm=$DATA/judgments/$TODAY/qrels.txt" \
+    --output minimal-example
 fi

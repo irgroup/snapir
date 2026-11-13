@@ -94,4 +94,4 @@ snapir export qrels --answers data/judgments/answers-clean.csv \
   --output data/judgments/qrels.txt --agg majority --min-assessors 2
 ```
 
-`--agg` is `majority` (ties fall back to the median), `median`, `max` or `min`. Pass the qrels to `export snapshot --qrels`, which assigns each judgment to the snapshot of its docno.
+`--agg` is `majority` (ties fall back to the median), `median`, `max` or `min`. Pass the qrels to `export snapshot --qrels NAME=PATH` (e.g. `--qrels in=qrels-in.txt --qrels re=qrels-re.txt`), which assigns each judgment to the snapshot of its docno and writes it to that day's `qrels-NAME.trec.gz` with the base doc_id.

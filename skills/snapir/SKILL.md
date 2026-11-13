@@ -172,7 +172,7 @@ Check attention-check results soon after submissions arrive (same day if possibl
 
 ### Distributable collection
 
-`export snapshot --serps data/serps --documents data/docs --topics data/topics-selected.jsonl --queries data/queries-selected.jsonl [--qrels qrels.txt] --output data/exports/snapshot`. Add `--from/--to/--skip-date` to choose crawl dates and `--captures` to include screenshots/MHTML (much larger).
+`export snapshot --serps data/serps --documents data/docs --topics data/topics-selected.jsonl --queries data/queries-selected.jsonl [--qrels NAME=qrels.txt …] --output data/exports/NAME`. The output directory's name is the dataset name in each day's `manifest.json`; ask the user for a meaningful one and keep exporting into that same directory. `--qrels` is repeatable, one per judgment set (e.g. `llm=…`, `in=…`, `re=…` → `qrels-<NAME>.trec.gz`); the inputs keep docnos, and the export writes base doc_ids. Add `--from/--to/--skip-date` to choose crawl dates and `--captures` to include screenshots/MHTML (much larger).
 
 ### When collection runs on a server
 

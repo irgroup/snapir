@@ -31,6 +31,8 @@ Every document linked from the SERP is judged, not only the organic results. Pai
 - `qrels.txt`: TREC qrels using the overall score `O`, rewritten after every
   run. Each judgment appears once for every query whose SERP links the document
   (`query_id 0 docno O`), matching the per-query runs of `export snapshot`.
+  Pass it as a named set, e.g. `export snapshot --qrels llm=…/qrels.txt`; the
+  export splits it by the docno's date and writes base doc_ids.
 
 
 
