@@ -179,6 +179,14 @@ def export_snapshot_command(
         bool,
         typer.Option("--captures", help="Also package screenshots and MHTML pages."),
     ] = False,
+    all_docs: Annotated[
+        bool,
+        typer.Option(
+            "--all-docs",
+            help="Export every capture of a date (incl. --rescrape captures of URLs "
+            "no longer in a SERP), not only the documents linked from that date's SERPs.",
+        ),
+    ] = False,
 ):
     """Assemble a LongEval-snapshot collection, one directory per crawl date.
 
@@ -206,6 +214,7 @@ def export_snapshot_command(
         date_to=date_to,
         skip_dates=skip_dates,
         captures=captures,
+        all_docs=all_docs,
     )
     typer.echo(f"Exported {count} snapshot date(s) → {output}")
 

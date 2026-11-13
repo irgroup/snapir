@@ -6,6 +6,7 @@ self-contained directory per crawl date:
         manifest.json                     format, snapshot period, field types
         documents/documents_000000.jsonl.gz
                                           meta.json (incl. text) of every captured SERP link
+                                          (with --all-docs: of every capture of that date)
         queries.jsonl.gz                  queries with a SERP on that date
         topics.jsonl.gz                   topics of those queries (+ valid_from/valid_to)
         run.trec.gz                       organic ranking as a TREC run (base doc_id)
@@ -181,6 +182,7 @@ def export_day(
     output: Path,
     captures: bool,
     collection: str,
+    all_docs: bool = False,
 ) -> dict[str, int]:
     out = output / day
     # The day directory is fully derived from the inputs; start clean so no
@@ -229,6 +231,11 @@ def export_day(
     if run:
         with gzip.open(out / "run.trec.gz", "wt", encoding="utf-8") as f:
             f.writelines(run)
+
+    serp_doc_ids = set(doc_ids)
+    if all_docs and (documents / day).is_dir():
+        # Every capture of the day, e.g. rescrapes of URLs no longer in a SERP.
+        doc_ids |= {p.name for p in (documents / day).iterdir() if p.is_dir()}
 
     records, screenshots, pages = [], [], []
     for doc_id in sorted(doc_ids):
@@ -299,10 +306,9 @@ def export_day(
     )
     (out / "manifest.json").write_text(json.dumps(manifest, ensure_ascii=False, indent=2) + "\n")
 
-    if len(records) < len(doc_ids):
-        print(
-            f"note: {day}: {len(doc_ids) - len(records)} of {len(doc_ids)} SERP documents not captured"
-        )
+    uncaptured_serp = len(serp_doc_ids - {r["doc_id"] for r in records})
+    if uncaptured_serp:
+        print(f"note: {day}: {uncaptured_serp} of {len(serp_doc_ids)} SERP documents not captured")
     return {
         "topics": len(topic_records),
         "queries": len(query_records),
@@ -325,11 +331,13 @@ def export_snapshot(
     date_to: str | None = None,
     skip_dates: list[str] | None = None,
     captures: bool = False,
+    all_docs: bool = False,
 ) -> int:
     """Export the collection and validate it; raises ValueError if the result
     would be rejected by the snapshot loader. `qrels` maps a set name ("" for
     the unnamed default set) to a docno-keyed TREC qrels file. The output directory's
-    name is the dataset name in every manifest."""
+    name is the dataset name in every manifest. With `all_docs`, every capture
+    in <documents>/<day>/ is exported, not only the day's SERP links."""
     collection = output.resolve().name
     for value in (date_from, date_to, *(skip_dates or [])):
         if value:
@@ -394,6 +402,7 @@ def export_snapshot(
             output,
             captures,
             collection,
+            all_docs,
         )
         print(f"{day}: " + ", ".join(f"{v} {k}" for k, v in counts.items()))
 
